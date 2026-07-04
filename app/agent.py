@@ -20,6 +20,7 @@ from google.adk.apps import App
 from google.adk.models import Gemini
 from google.adk.workflow import Workflow, node, Edge
 from google.adk.events.event import Event
+from google.adk.events.event_actions import EventActions
 from google.adk.agents.context import Context
 from google.genai import types
 from pydantic import BaseModel, Field
@@ -43,7 +44,9 @@ def preprocess_input(ctx: Context, node_input: Any) -> str:
         text = "".join(part.text for part in node_input.parts if part.text)
     elif isinstance(node_input, dict) and "parts" in node_input:
         parts = node_input["parts"]
-        text = "".join(p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p)
+        text = "".join(
+            p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p
+        )
     else:
         text = str(node_input)
     ctx.state["query"] = text
@@ -74,7 +77,7 @@ def router_node(ctx: Context, node_input: dict) -> Event:
     """Routes the workflow based on the classification and forwards the query."""
     category = node_input.get("category", "unrelated")
     query = ctx.state.get("query", "")
-    return Event(output=query, route=category)
+    return Event(output=query, actions=EventActions(route=category))
 
 
 concierge_faq_agent = LlmAgent(

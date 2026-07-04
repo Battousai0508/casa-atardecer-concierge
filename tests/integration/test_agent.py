@@ -14,7 +14,7 @@
 
 import time
 from typing import Any
-import pytest
+
 from google.adk.agents.run_config import RunConfig, StreamingMode
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
@@ -31,9 +31,7 @@ def _run_agent(user_query: str) -> tuple[InMemorySessionService, Any]:
     session = session_service.create_session_sync(user_id="test_user", app_name="app")
     runner = Runner(agent=root_agent, session_service=session_service, app_name="app")
 
-    message = types.Content(
-        role="user", parts=[types.Part.from_text(text=user_query)]
-    )
+    message = types.Content(role="user", parts=[types.Part.from_text(text=user_query)])
 
     events = list(
         runner.run(
@@ -53,7 +51,7 @@ def _run_agent(user_query: str) -> tuple[InMemorySessionService, Any]:
 def test_faq_route() -> None:
     """Verifies that an FAQ query is correctly classified and answered by the FAQ agent."""
     session, events = _run_agent("Where is Casa Atardecer located?")
-    
+
     # Check classification state
     classification = session.state.get("classification")
     assert classification is not None
@@ -66,13 +64,17 @@ def test_faq_route() -> None:
             response_text += "".join(p.text for p in event.content.parts if p.text)
 
     assert len(response_text) > 0
-    assert "Casa Atardecer" in response_text or "ubicada" in response_text or "located" in response_text
+    assert (
+        "Casa Atardecer" in response_text
+        or "ubicada" in response_text
+        or "located" in response_text
+    )
 
 
 def test_calendar_route() -> None:
     """Verifies that calendar/reservation queries route to the calendar agent."""
-    session, events = _run_agent("Is the house available next weekend?")
-    
+    session, _ = _run_agent("Is the house available next weekend?")
+
     classification = session.state.get("classification")
     assert classification is not None
     assert classification.get("category") == "calendar"
@@ -81,7 +83,7 @@ def test_calendar_route() -> None:
 def test_unrelated_route() -> None:
     """Verifies that unrelated queries are classified as unrelated and politely declined."""
     session, events = _run_agent("What is the capital of France?")
-    
+
     classification = session.state.get("classification")
     assert classification is not None
     assert classification.get("category") == "unrelated"
