@@ -1,0 +1,32 @@
+{
+  "eval_cases": [
+    {
+      "eval_case_id": "property_location",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Where is Casa Atardecer located?"}]
+      }
+    },
+    {
+      "eval_case_id": "house_rules",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "What are the rules about pets and smoking?"}]
+      }
+    },
+    {
+      "eval_case_id": "calendar_availability",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "Is the house available for booking from September 10th to September 17th, 2026?"}]
+      }
+    },
+    {
+      "eval_case_id": "unrelated_question",
+      "prompt": {
+        "role": "user",
+        "parts": [{"text": "How many states are in the United States?"}]
+      }
+    }
+  ]
+}
