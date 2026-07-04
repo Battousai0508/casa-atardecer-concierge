@@ -98,24 +98,20 @@ To run the full stack locally:
 
 ## Deployment
 
-### Option A: Deploy to Google Cloud (Cloud Run)
-If you want to host the backend on Google Cloud, use the default ADK deployment commands (requires the Google Cloud SDK):
-```bash
-gcloud config set project <your-project-id>
-agents-cli deploy
-```
-- To add CI/CD and Terraform infrastructure, run `agents-cli scaffold enhance`.
-- To set up your complete production infrastructure pipeline, run `agents-cli infra cicd`.
+This project includes a standard [Dockerfile](file:///Users/anaaragon/Desktop/capstone/casa-atardecer-concierge/Dockerfile) at the root, allowing you to deploy the FastAPI backend to any container-supporting cloud provider (such as Render, Railway, Fly.io, AWS, or DigitalOcean) without requiring the Google Cloud SDK (`gcloud` or `agents-cli deploy`).
 
-### Option B: Deploy to Any Cloud Provider (Render, Railway, Fly.io, etc.)
-Because this project includes a standard [Dockerfile](file:///Users/anaaragon/Desktop/capstone/casa-atardecer-concierge/Dockerfile), you can deploy it to any provider that supports Docker container deployments:
+### How to Deploy (Render, Railway, etc.)
 
-1.  **Build and run the container locally** to test:
+1.  **Build and test the container locally** (optional):
     ```bash
     docker build -t casa-atardecer-concierge .
     docker run -p 8080:8080 --env-file .env casa-atardecer-concierge
     ```
-2.  **Deploy**: Connect this repository to your preferred platform (e.g. Render, Railway) and point it to the root [Dockerfile](file:///Users/anaaragon/Desktop/capstone/casa-atardecer-concierge/Dockerfile) to build and run the backend. Make sure to configure the `GEMINI_API_KEY` and other variables in your provider's environment settings.
+2.  **Deploy to your hosting provider**:
+    - Connect your GitHub repository to your hosting provider (e.g., Render, Railway).
+    - Configure the service to build from the root [Dockerfile](file:///Users/anaaragon/Desktop/capstone/casa-atardecer-concierge/Dockerfile).
+    - Expose port `8080` (or your provider's default port).
+    - Define your environment variables (like `GEMINI_API_KEY`) in the provider's Dashboard settings.
 
 ## Observability
 

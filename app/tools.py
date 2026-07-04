@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+
 from google.adk.tools.mcp_tool import McpToolset
 from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from mcp import StdioServerParameters
@@ -20,7 +22,19 @@ calendar_mcp = McpToolset(
     connection_params=StdioConnectionParams(
         server_params=StdioServerParameters(
             command="npx",
-            args=["-y", "@modelcontextprotocol/server-google-calendar"],
+            args=["-y", "@cocal/google-calendar-mcp"],
+            env={
+                "GOOGLE_OAUTH_CREDENTIALS": os.getenv(
+                    "GOOGLE_OAUTH_CREDENTIALS",
+                    os.path.abspath(
+                        os.path.join(
+                            os.path.dirname(__file__),
+                            "../gcp-oauth.keys.json",
+                        )
+                    ),
+                ),
+                "PATH": os.getenv("PATH", ""),  # npx needs PATH to locate node/npm
+            },
         ),
     ),
 )
