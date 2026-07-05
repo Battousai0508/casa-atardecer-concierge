@@ -100,9 +100,11 @@ To run the full stack locally:
 *   **Start the frontend server** (runs on port `3000`):
     ```bash
     cd frontend
+    cp .env.example .env.local
     npm install
     npm run dev
     ```
+
 
 *   **Open** [http://localhost:3000](http://localhost:3000) in your browser.
 
