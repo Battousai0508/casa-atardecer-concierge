@@ -28,23 +28,35 @@ Before you begin, ensure you have:
 
 ## Quick Start
 
-Install `agents-cli` and its skills if not already installed:
+1. **Clone the repository and install dependencies:**
+   ```bash
+   uvx google-agents-cli setup
+   agents-cli install
+   ```
 
-```bash
-uvx google-agents-cli setup
-```
+2. **Configure environment variables:**
+   Copy the example environment file and add your `GEMINI_API_KEY` (from Google AI Studio):
+   ```bash
+   cp .env.example .env
+   ```
 
-Install required packages:
+3. **Set up Google Calendar Integration (MCP):**
+   Since the OAuth credentials file is ignored in version control, you need to create your own:
+   * Go to the [Google Cloud Console](https://console.cloud.google.com/).
+   * Enable the **Google Calendar API**.
+   * Under **Google Auth Platform** (or OAuth consent screen), set the User Type to **External**, go to the **Audience** (Público) tab, and add your Gmail address to the **Test users** (Usuarios de prueba) list.
+   * Under **Credentials**, create an OAuth Client ID of type **Desktop app**.
+   * Download the JSON credentials file and save it in the root of the project as `gcp-oauth.keys.json`.
+   * **Pre-authenticate** your calendar by running the following command once to open the browser consent screen and save your session locally:
+     ```bash
+     export GOOGLE_OAUTH_CREDENTIALS="$(pwd)/gcp-oauth.keys.json"
+     npx @cocal/google-calendar-mcp auth
+     ```
 
-```bash
-agents-cli install
-```
-
-Test the agent with a local web server:
-
-```bash
-agents-cli playground
-```
+4. **Test the agent with the playground:**
+   ```bash
+   agents-cli playground
+   ```
 
 You can also use features from the [ADK](https://adk.dev/) CLI with `uv run adk`.
 
