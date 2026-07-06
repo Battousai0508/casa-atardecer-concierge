@@ -98,7 +98,7 @@ def test_unrelated_route() -> None:
 
 def test_pii_redacted_route() -> None:
     """Verifies that queries containing PII have their PII redacted in the state and traces."""
-    session, events = _run_agent(
+    session, _events = _run_agent(
         "Hola, mi email es guest@test.com, mi teléfono es +34 600 000 000 y mi tarjeta de crédito es 4111-2222-3333-4444. ¿Se puede reservar?"
     )
 
@@ -135,5 +135,6 @@ def test_prompt_injection_blocked_route() -> None:
         if event.content and event.content.parts:
             response_text += "".join(p.text for p in event.content.parts if p.text)
 
-    assert "razones de seguridad" in response_text or "security policies" in response_text
-
+    assert (
+        "razones de seguridad" in response_text or "security policies" in response_text
+    )

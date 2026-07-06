@@ -97,11 +97,14 @@ def preprocess_input(ctx: Context, node_input: Any) -> str:
 
 EMAIL_REGEX = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
 # Phone numbers: +34 600 000 000, 600000000, +34600000000, +1-555-555-5555
-PHONE_REGEX = re.compile(r"(?:\+\d{1,3}[-.\s]?)?\b\d{3}[-.\s]?\d{3}[-.\s]?\d{3,4}\b|\b\d{9}\b")
+PHONE_REGEX = re.compile(
+    r"(?:\+\d{1,3}[-.\s]?)?\b\d{3}[-.\s]?\d{3}[-.\s]?\d{3,4}\b|\b\d{9}\b"
+)
 # Credit cards: 13-19 digits, with optional hyphens/spaces
 CREDIT_CARD_REGEX = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
 # Spanish DNI/NIE: 8 digits + 1 letter, or 1 letter + 7 digits + 1 letter
 DNI_NIE_REGEX = re.compile(r"\b[XYZ]?\d{7,8}[A-Z]\b", re.IGNORECASE)
+
 
 def detect_injection(text: str) -> bool:
     text_lower = text.lower()
@@ -110,7 +113,7 @@ def detect_injection(text: str) -> bool:
         r"system\s+override",
         r"override\s+previous",
         r"bypass\s+(?:the\s+)?rules",
-        r"reveal\s+(?:the\s+)?system\s+prompt"
+        r"reveal\s+(?:the\s+)?system\s+prompt",
     ]
     spanish_patterns = [
         r"ignor(?:a|e|ar)\s+(?:todas\s+)?(?:las\s+)?(?:reglas|instrucciones|directrices|normas)(?:s|es)?\s+(?:anterior|prev)",
@@ -118,7 +121,7 @@ def detect_injection(text: str) -> bool:
         r"s(?:a|á)lt(?:a|e|ar)(?:se)?\s+(?:las\s+)?reglas",
         r"omit(?:a|e|ir)\s+(?:las\s+)?(?:reglas|instrucciones)",
         r"confirmar\s+(?:gratis|sin\s+costo)",
-        r"reserva\s+gratis"
+        r"reserva\s+gratis",
     ]
     for pattern in english_patterns + spanish_patterns:
         if re.search(pattern, text_lower):
@@ -130,36 +133,36 @@ def detect_injection(text: str) -> bool:
 def security_screen(ctx: Context, node_input: str) -> Event:
     """Checks for prompt injections and sanitizes PII (emails, phone numbers, credit cards, DNI/NIE)."""
     text = node_input
-    
+
     # 1. Defend against prompt injection
     if detect_injection(text):
         ctx.state["security_event"] = True
         ctx.state["original_query"] = text
         return Event(output=text, actions=EventActions(route="injection"))
-    
+
     # 2. Scrub PII
     redacted_categories = []
-    
+
     if EMAIL_REGEX.search(text):
         text = EMAIL_REGEX.sub("[EMAIL_REDACTED]", text)
         redacted_categories.append("email")
-        
+
     if CREDIT_CARD_REGEX.search(text):
         text = CREDIT_CARD_REGEX.sub("[CREDIT_CARD_REDACTED]", text)
         redacted_categories.append("credit_card")
-        
+
     if PHONE_REGEX.search(text):
         text = PHONE_REGEX.sub("[PHONE_REDACTED]", text)
         redacted_categories.append("phone")
-        
+
     if DNI_NIE_REGEX.search(text):
         text = DNI_NIE_REGEX.sub("[DOCUMENT_REDACTED]", text)
         redacted_categories.append("document")
-        
+
     ctx.state["query"] = text
     if redacted_categories:
         ctx.state["redacted_categories"] = redacted_categories
-        
+
     return Event(output=text, actions=EventActions(route="clean"))
 
 
@@ -181,11 +184,14 @@ def security_alert_node(ctx: Context, node_input: str) -> Event:
 
 EMAIL_REGEX = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
 # Phone numbers: +34 600 000 000, 600000000, +34600000000, +1-555-555-5555
-PHONE_REGEX = re.compile(r"(?:\+\d{1,3}[-.\s]?)?\b\d{3}[-.\s]?\d{3}[-.\s]?\d{3,4}\b|\b\d{9}\b")
+PHONE_REGEX = re.compile(
+    r"(?:\+\d{1,3}[-.\s]?)?\b\d{3}[-.\s]?\d{3}[-.\s]?\d{3,4}\b|\b\d{9}\b"
+)
 # Credit cards: 13-19 digits, with optional hyphens/spaces
 CREDIT_CARD_REGEX = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
 # Spanish DNI/NIE: 8 digits + 1 letter, or 1 letter + 7 digits + 1 letter
 DNI_NIE_REGEX = re.compile(r"\b[XYZ]?\d{7,8}[A-Z]\b", re.IGNORECASE)
+
 
 def detect_injection(text: str) -> bool:
     text_lower = text.lower()
@@ -194,7 +200,7 @@ def detect_injection(text: str) -> bool:
         r"system\s+override",
         r"override\s+previous",
         r"bypass\s+(?:the\s+)?rules",
-        r"reveal\s+(?:the\s+)?system\s+prompt"
+        r"reveal\s+(?:the\s+)?system\s+prompt",
     ]
     spanish_patterns = [
         r"ignor(?:a|e|ar)\s+(?:todas\s+)?(?:las\s+)?(?:reglas|instrucciones|directrices|normas)(?:s|es)?\s+(?:anterior|prev)",
@@ -202,7 +208,7 @@ def detect_injection(text: str) -> bool:
         r"s(?:a|á)lt(?:a|e|ar)(?:se)?\s+(?:las\s+)?reglas",
         r"omit(?:a|e|ir)\s+(?:las\s+)?(?:reglas|instrucciones)",
         r"confirmar\s+(?:gratis|sin\s+costo)",
-        r"reserva\s+gratis"
+        r"reserva\s+gratis",
     ]
     for pattern in english_patterns + spanish_patterns:
         if re.search(pattern, text_lower):
@@ -214,36 +220,36 @@ def detect_injection(text: str) -> bool:
 def security_screen(ctx: Context, node_input: str) -> Event:
     """Checks for prompt injections and sanitizes PII (emails, phone numbers, credit cards, DNI/NIE)."""
     text = node_input
-    
+
     # 1. Defend against prompt injection
     if detect_injection(text):
         ctx.state["security_event"] = True
         ctx.state["original_query"] = text
         return Event(output=text, actions=EventActions(route="injection"))
-    
+
     # 2. Scrub PII
     redacted_categories = []
-    
+
     if EMAIL_REGEX.search(text):
         text = EMAIL_REGEX.sub("[EMAIL_REDACTED]", text)
         redacted_categories.append("email")
-        
+
     if CREDIT_CARD_REGEX.search(text):
         text = CREDIT_CARD_REGEX.sub("[CREDIT_CARD_REDACTED]", text)
         redacted_categories.append("credit_card")
-        
+
     if PHONE_REGEX.search(text):
         text = PHONE_REGEX.sub("[PHONE_REDACTED]", text)
         redacted_categories.append("phone")
-        
+
     if DNI_NIE_REGEX.search(text):
         text = DNI_NIE_REGEX.sub("[DOCUMENT_REDACTED]", text)
         redacted_categories.append("document")
-        
+
     ctx.state["query"] = text
     if redacted_categories:
         ctx.state["redacted_categories"] = redacted_categories
-        
+
     return Event(output=text, actions=EventActions(route="clean"))
 
 
