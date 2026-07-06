@@ -95,93 +95,13 @@ def preprocess_input(ctx: Context, node_input: Any) -> str:
     return text
 
 
-EMAIL_REGEX = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
-# Phone numbers: +34 600 000 000, 600000000, +34600000000, +1-555-555-5555
-PHONE_REGEX = re.compile(
-    r"(?:\+\d{1,3}[-.\s]?)?\b\d{3}[-.\s]?\d{3}[-.\s]?\d{3,4}\b|\b\d{9}\b"
-)
-# Credit cards: 13-19 digits, with optional hyphens/spaces
-CREDIT_CARD_REGEX = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
-# Spanish DNI/NIE: 8 digits + 1 letter, or 1 letter + 7 digits + 1 letter
-DNI_NIE_REGEX = re.compile(r"\b[XYZ]?\d{7,8}[A-Z]\b", re.IGNORECASE)
-
-
-def detect_injection(text: str) -> bool:
-    text_lower = text.lower()
-    english_patterns = [
-        r"ignore\s+(?:all\s+)?(?:previous\s+)?(?:instructions|rules|guidelines)",
-        r"system\s+override",
-        r"override\s+previous",
-        r"bypass\s+(?:the\s+)?rules",
-        r"reveal\s+(?:the\s+)?system\s+prompt",
-    ]
-    spanish_patterns = [
-        r"ignor(?:a|e|ar)\s+(?:todas\s+)?(?:las\s+)?(?:reglas|instrucciones|directrices|normas)(?:s|es)?\s+(?:anterior|prev)",
-        r"ignor(?:a|e|ar)\s+(?:todas\s+)?(?:las\s+)?(?:reglas|instrucciones|directrices|normas)",
-        r"s(?:a|á)lt(?:a|e|ar)(?:se)?\s+(?:las\s+)?reglas",
-        r"omit(?:a|e|ir)\s+(?:las\s+)?(?:reglas|instrucciones)",
-        r"confirmar\s+(?:gratis|sin\s+costo)",
-        r"reserva\s+gratis",
-    ]
-    for pattern in english_patterns + spanish_patterns:
-        if re.search(pattern, text_lower):
-            return True
-    return False
-
-
-@node
-def security_screen(ctx: Context, node_input: str) -> Event:
-    """Checks for prompt injections and sanitizes PII (emails, phone numbers, credit cards, DNI/NIE)."""
-    text = node_input
-
-    # 1. Defend against prompt injection
-    if detect_injection(text):
-        ctx.state["security_event"] = True
-        ctx.state["original_query"] = text
-        return Event(output=text, actions=EventActions(route="injection"))
-
-    # 2. Scrub PII
-    redacted_categories = []
-
-    if EMAIL_REGEX.search(text):
-        text = EMAIL_REGEX.sub("[EMAIL_REDACTED]", text)
-        redacted_categories.append("email")
-
-    if CREDIT_CARD_REGEX.search(text):
-        text = CREDIT_CARD_REGEX.sub("[CREDIT_CARD_REDACTED]", text)
-        redacted_categories.append("credit_card")
-
-    if PHONE_REGEX.search(text):
-        text = PHONE_REGEX.sub("[PHONE_REDACTED]", text)
-        redacted_categories.append("phone")
-
-    if DNI_NIE_REGEX.search(text):
-        text = DNI_NIE_REGEX.sub("[DOCUMENT_REDACTED]", text)
-        redacted_categories.append("document")
-
-    ctx.state["query"] = text
-    if redacted_categories:
-        ctx.state["redacted_categories"] = redacted_categories
-
-    return Event(output=text, actions=EventActions(route="clean"))
-
-
-@node
-def security_alert_node(ctx: Context, node_input: str) -> Event:
-    """Politely declines to process queries containing security violations/injections."""
-    msg = (
-        "Lo siento, no podemos procesar su solicitud por razones de seguridad.\n\n"
-        "Sorry, we cannot process your request due to security policies."
-    )
-    return Event(
-        output=msg,
-        content=types.Content(
-            role="model",
-            parts=[types.Part.from_text(text=msg)],
-        ),
-    )
-
-
+# --- Security layer -------------------------------------------------------
+# The security_screen node runs BEFORE the classifier, so every guest message
+# is inspected at the front door. It does two things: (1) blocks prompt-injection
+# attempts (in English and Spanish) by routing them to a hard decline, and
+# (2) redacts PII (emails, phone numbers, credit cards, Spanish DNI/NIE) from the
+# text before it ever reaches a model or the logs. Redacting up front means the
+# LLM and telemetry only ever see sanitized input — defense in depth.
 EMAIL_REGEX = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
 # Phone numbers: +34 600 000 000, 600000000, +34600000000, +1-555-555-5555
 PHONE_REGEX = re.compile(

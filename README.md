@@ -56,7 +56,9 @@ flowchart TD
     API --> WF[ADK Workflow<br/>casa_atardecer_workflow]
 
     WF --> PRE[preprocess_input<br/>extract text -> state]
-    PRE --> CLS[classifier_agent<br/>Gemini 2.5 Flash]
+    PRE --> SEC{security_screen<br/>injection check + PII scrub}
+    SEC -->|injection| ALERT[security_alert_node<br/>hard decline]
+    SEC -->|clean| CLS[classifier_agent<br/>Gemini 2.5 Flash]
     CLS --> RT{router_node<br/>route by category}
 
     RT -->|faq| FAQ[concierge_faq_agent<br/>stay info, rules, directions]
@@ -70,9 +72,10 @@ flowchart TD
 ### Request flow
 
 1. **`preprocess_input`** extracts the raw text from the incoming message and stores it in state.
-2. **`classifier_agent`** (Gemini 2.5 Flash) labels the message as `faq`, `calendar`, or `unrelated` using a constrained output schema.
-3. **`router_node`** forwards the original query to the matching branch.
-4. The chosen specialist responds:
+2. **`security_screen`** inspects every message at the front door: it blocks prompt-injection attempts (in Spanish and English) with a hard decline, and **redacts PII** (emails, phone numbers, credit cards, Spanish DNI/NIE) *before* the text reaches any model or the logs.
+3. **`classifier_agent`** (Gemini 2.5 Flash) labels the sanitized message as `faq`, `calendar`, or `unrelated` using a constrained output schema.
+4. **`router_node`** forwards the original query to the matching branch.
+5. The chosen specialist responds:
    - **`concierge_faq_agent`** — answers stay questions in the guest's language.
    - **`calendar_agent`** — reads the calendar via MCP, checks for overlaps, and only then confirms or rejects a booking.
    - **`decline_node`** — a deterministic node that politely redirects off-topic requests (no LLM call needed).
@@ -85,7 +88,7 @@ flowchart TD
 | **MCP Server** | [`app/tools.py`](app/tools.py) | The `calendar_agent` uses the **Google Calendar MCP server** (`@cocal/google-calendar-mcp`) via ADK's `McpToolset` to read and write real calendar events. |
 | **Agent skills (Agents CLI)** | [`agents-cli-manifest.yaml`](agents-cli-manifest.yaml), project lifecycle | Project scaffolded, run, linted, and evaluated with `agents-cli`. |
 | **Deployability** | [`Dockerfile`](Dockerfile) | Containerized FastAPI backend that runs on any container host (Cloud Run, Render, Railway, …). |
-| **Security features** | `.gitignore`, `os.getenv` usage | No secrets in the repo: API keys and OAuth credentials are read from the environment and git-ignored. |
+| **Security features** | [`app/agent.py`](app/agent.py) `security_screen`, `.gitignore` | A `security_screen` node that blocks prompt injection and redacts PII (email, phone, credit card, DNI/NIE) before the model sees it; plus least-privilege tool access and no secrets in the repo (keys read from env, credentials git-ignored). |
 | **Antigravity** | Development workflow | Built with the Antigravity agentic IDE; project context lives in [`GEMINI.md`](GEMINI.md). |
 
 ### Tech stack
@@ -241,8 +244,17 @@ See the [A2A Inspector docs](https://github.com/a2aproject/a2a-inspector) for de
 
 ## Security
 
-No secrets are committed to this repository:
+Security is built in at three layers:
 
+**1. Input screening (`security_screen` node in [`app/agent.py`](app/agent.py))**
+Every guest message is inspected *before* it reaches any model:
+- **Prompt-injection defense** — messages matching known injection patterns (in both Spanish and English, e.g. "ignora las instrucciones", "reveal the system prompt") are routed to a hard decline (`security_alert_node`) and never reach the agents.
+- **PII redaction** — emails, phone numbers, credit-card numbers, and Spanish DNI/NIE are detected by regex and replaced with `[…_REDACTED]` placeholders before the text is sent to the LLM or written to logs (defense in depth).
+
+**2. Least-privilege tool access**
+Only the `calendar_agent` holds the Google Calendar MCP tools. The FAQ, decline, and security paths have zero access to the owner's calendar, so a general message can never reach the one capability that modifies real bookings.
+
+**3. No secrets in the repository**
 - API keys (`GEMINI_API_KEY`) and OAuth credentials are read from the environment via `os.getenv` and provided through a git-ignored `.env`.
 - The Google OAuth file (`gcp-oauth.keys.json`) and all `*-key.json` / `credentials*.json` files are excluded in [`.gitignore`](.gitignore).
 - Copy `.env.example` to `.env` and supply your own values to run the project.
