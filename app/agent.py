@@ -13,6 +13,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Casa Atardecer Concierge — agent definition.
+
+Design overview
+---------------
+This module wires a **router-based multi-agent workflow** rather than a single
+"do-everything" agent. Each guest message flows through:
+
+    preprocess_input -> classifier_agent -> router_node -> [specialist]
+
+We deliberately split the work into small, single-responsibility agents because:
+
+* **Focused prompts evaluate better.** A narrow instruction (only FAQs, only the
+  calendar) is easier to test, debug, and keep from hallucinating than one giant
+  prompt trying to cover every case.
+* **Least privilege for tools.** Only the ``calendar_agent`` is given the Google
+  Calendar MCP tools. The FAQ path can never accidentally read or write the
+  owner's calendar, which keeps the sensitive action behind a single door.
+* **Deterministic branches stay deterministic.** Off-topic messages are handled
+  by a plain Python node (no LLM call), so we never spend a model call — or risk
+  a model going off-script — on something we already know how to answer.
+
+Model choice: every LLM node uses ``gemini-2.5-flash``. Concierge replies and a
+one-word classification are latency-sensitive and low-complexity, so Flash gives
+the best cost/latency trade-off; the heavier Pro models would add cost and delay
+without improving these short, well-scoped tasks.
+"""
+
 from typing import Literal, Any
 
 from google.adk.agents import LlmAgent
@@ -28,6 +55,9 @@ from pydantic import BaseModel, Field
 from .tools import calendar_mcp
 
 
+# Constrained output schema for the classifier. Forcing the model to emit one of
+# three literal categories (instead of free text) makes routing reliable: the
+# router can switch on a known value and never has to parse a prose reply.
 class Classification(BaseModel):
     category: Literal["faq", "calendar", "unrelated"] = Field(
         description="The classified category of the user query."
@@ -36,7 +66,17 @@ class Classification(BaseModel):
 
 @node
 def preprocess_input(ctx: Context, node_input: Any) -> str:
-    """Extracts the text of the user message and saves it to state."""
+    """Extracts the text of the user message and saves it to state.
+
+    The entrypoint can receive the message in several shapes depending on the
+    caller (a raw string from the playground, an ADK ``Content`` object with
+    ``parts``, or a plain dict over the A2A/HTTP boundary). We normalize all of
+    them to a single string here so downstream nodes only ever deal with text.
+
+    The normalized query is stashed in ``ctx.state["query"]`` so that
+    ``router_node`` can forward the *original* wording to the specialist, even
+    though the classifier node's own output is just the category label.
+    """
     text = ""
     if isinstance(node_input, str):
         text = node_input
@@ -48,11 +88,17 @@ def preprocess_input(ctx: Context, node_input: Any) -> str:
             p.get("text", "") for p in parts if isinstance(p, dict) and "text" in p
         )
     else:
+        # Fallback for any unexpected shape — never crash the workflow on input.
         text = str(node_input)
     ctx.state["query"] = text
     return text
 
 
+# Intent router. Its only job is to label the message, so it is given a tight
+# instruction and the ``Classification`` output schema. Result is written to
+# state under ``output_key="classification"`` for the router node to read.
+# ``retry_options`` guards against transient model/network errors on this
+# critical first hop — if classification fails, nothing downstream can run.
 classifier_agent = LlmAgent(
     name="classifier_agent",
     model=Gemini(
@@ -74,12 +120,28 @@ classifier_agent = LlmAgent(
 
 @node
 def router_node(ctx: Context, node_input: dict) -> Event:
-    """Routes the workflow based on the classification and forwards the query."""
+    """Routes the workflow based on the classification and forwards the query.
+
+    Two things happen here:
+
+    * ``EventActions(route=category)`` picks the outgoing edge (see the Workflow
+      definition below), sending the message to the matching specialist.
+    * We set ``output`` back to the *original* guest query (pulled from state),
+      not the classifier's label — the specialist needs the real question, not
+      the word "faq".
+
+    Defaulting to ``"unrelated"`` is a safe fallback: if the classifier ever
+    returns something unexpected, we decline politely rather than misroute a
+    message into the calendar path.
+    """
     category = node_input.get("category", "unrelated")
     query = ctx.state.get("query", "")
     return Event(output=query, actions=EventActions(route=category))
 
 
+# FAQ specialist: knowledge-only, intentionally given NO tools. It answers stay
+# questions from its instruction and mirrors the guest's language. Keeping it
+# tool-free means the FAQ path has zero access to the calendar (least privilege).
 concierge_faq_agent = LlmAgent(
     name="concierge_faq_agent",
     model=Gemini(
@@ -94,6 +156,12 @@ concierge_faq_agent = LlmAgent(
 )
 
 
+# Calendar specialist: the only agent with tools. It reaches the owner's real
+# Google Calendar through the MCP toolset (see app/tools.py). The instruction
+# enforces a strict "read-before-write" contract — always list events and check
+# for overlaps BEFORE creating one — so the agent acts on live data and can
+# never double-book. This is the human-safety guardrail around the one action
+# that has real-world consequences (creating a reservation).
 calendar_agent = LlmAgent(
     name="calendar_agent",
     model=Gemini(
@@ -120,7 +188,13 @@ calendar_agent = LlmAgent(
 
 @node
 def decline_node(ctx: Context, node_input: str) -> Event:
-    """Politely declines to answer unrelated queries and redirects to stay topics."""
+    """Politely declines to answer unrelated queries and redirects to stay topics.
+
+    Implemented as a plain node with a fixed bilingual message instead of an LLM
+    agent: the response never varies, so a hard-coded reply is cheaper, instant,
+    and immune to prompt-injection or off-topic drift. It also keeps the agent
+    on-scope, which matters for a customer-facing concierge.
+    """
     msg = (
         "Lo siento, solo puedo responder preguntas relacionadas con su estancia en Casa Atardecer "
         "(como indicaciones para llegar, llaves, normas de la casa, disponibilidad o reservas). "
@@ -138,12 +212,18 @@ def decline_node(ctx: Context, node_input: str) -> Event:
     )
 
 
+# Workflow graph. The first three edges are a linear pipeline (normalize ->
+# classify -> route); the last three are conditional edges keyed by ``route``,
+# where the router's chosen category selects exactly one specialist branch.
+# Each guest turn therefore touches at most two model calls (classify + answer),
+# and the "unrelated" branch touches only one.
 root_agent = Workflow(
     name="casa_atardecer_workflow",
     edges=[
         ("START", preprocess_input),
         (preprocess_input, classifier_agent),
         (classifier_agent, router_node),
+        # Conditional branches — the ``route`` value set by router_node picks one.
         Edge(from_node=router_node, to_node=concierge_faq_agent, route="faq"),
         Edge(from_node=router_node, to_node=calendar_agent, route="calendar"),
         Edge(from_node=router_node, to_node=decline_node, route="unrelated"),
@@ -151,6 +231,8 @@ root_agent = Workflow(
 )
 
 
+# Exported ADK App consumed by the FastAPI backend (app/fast_api_app.py) and the
+# playground. ``root_agent`` is the entrypoint the Runner drives per session.
 app = App(
     root_agent=root_agent,
     name="app",
